@@ -458,6 +458,68 @@ void RenderPass2()
                                   0);
     assert(hResult == S_OK);
 
+    hResult = g_pd3dDevice->SetRenderState(D3DRS_ZENABLE, FALSE);
+    assert(hResult == S_OK);
+
+    hResult = g_pd3dDevice->BeginScene();
+    assert(hResult == S_OK);
+
+    hResult = g_pEffect2->SetTechnique("Technique1");
+    assert(hResult == S_OK);
+
+    UINT numPass = 0;
+    hResult = g_pEffect2->Begin(&numPass, 0);
+    assert(hResult == S_OK);
+
+    hResult = g_pEffect2->BeginPass(0);
+    assert(hResult == S_OK);
+
+    hResult = g_pEffect2->SetTexture("texture1", g_pRenderTarget);
+    assert(hResult == S_OK);
+
+    // ここを追加
+    float texelSize[2] =
+    {
+        1.0f / (float)SCREEN_W,
+        1.0f / (float)SCREEN_H
+    };
+    hResult = g_pEffect2->SetFloatArray("g_TexelSize", texelSize, 2);
+    assert(hResult == S_OK);
+
+    hResult = g_pEffect2->CommitChanges();
+    assert(hResult == S_OK);
+
+    DrawFullscreenQuad();
+
+    hResult = g_pEffect2->EndPass();
+    assert(hResult == S_OK);
+
+    hResult = g_pEffect2->End();
+    assert(hResult == S_OK);
+
+    hResult = g_pd3dDevice->EndScene();
+    assert(hResult == S_OK);
+
+    hResult = g_pd3dDevice->Present(NULL, NULL, NULL, NULL);
+    assert(hResult == S_OK);
+
+    hResult = g_pd3dDevice->SetRenderState(D3DRS_ZENABLE, TRUE);
+    assert(hResult == S_OK);
+}
+
+/*
+void RenderPass2()
+{
+    HRESULT hResult = E_FAIL;
+
+    hResult = g_pd3dDevice->Clear(0,
+                                  NULL,
+                                  D3DCLEAR_TARGET | D3DCLEAR_ZBUFFER,
+                                  D3DCOLOR_XRGB(0, 0, 0),
+                                  1.0f,
+                                  0);
+    assert(hResult == S_OK);
+
     // 2Dフルスクリーン描画なのでZは不要
     hResult = g_pd3dDevice->SetRenderState(D3DRS_ZENABLE, FALSE);
     assert(hResult == S_OK);
@@ -498,6 +560,7 @@ void RenderPass2()
     hResult = g_pd3dDevice->SetRenderState(D3DRS_ZENABLE, TRUE);
     assert(hResult == S_OK);
 }
+*/
 
 void DrawFullscreenQuad()
 {
