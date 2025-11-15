@@ -72,6 +72,8 @@ int WINAPI _tWinMain(_In_ HINSTANCE hInstance,
 {
     _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
 
+    SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_UNAWARE);
+
     WNDCLASSEX wc { };
     wc.cbSize = sizeof(WNDCLASSEX);
     wc.style = CS_CLASSDC;

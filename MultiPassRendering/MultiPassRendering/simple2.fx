@@ -16,64 +16,6 @@ sampler textureSampler = sampler_state
 // 画面上での 1 ピクセル分 (1 / width, 1 / height) を C++ から渡す
 float2 g_TexelSize;
 
-// ----------------------------------------------------
-// 共通ユーティリティ
-// ----------------------------------------------------
-
-float Luminance(float3 color)
-{
-    return dot(color, float3(0.299f, 0.587f, 0.114f));
-}
-
-float3 SampleScene(float2 uv)
-{
-    return tex2D(textureSampler, uv).rgb;
-}
-
-// 上下の輝度差から、その列が「どちら側の色が強いか」を分類
-//  1.0  : 下側が上側より明るい（または暗い）、差がしきい値以上
-// -1.0  : 上側が下側より明るい（または暗い）、差がしきい値以上
-//  0.0  : 差が小さいのでエッジとはみなさない
-float ClassifyVertical(float lumaTop, float lumaBottom, float threshold)
-{
-    float diff = lumaBottom - lumaTop;
-    float result = 0.0f;
-
-    if (diff > threshold)
-    {
-        result = +1.0f;
-    }
-    else
-    {
-        if (diff < -threshold)
-        {
-            result = -1.0f;
-        }
-    }
-
-    return result;
-}
-
-// 左右の輝度差から、その行が「どちら側の色が強いか」を分類
-float ClassifyHorizontal(float lumaLeft, float lumaRight, float threshold)
-{
-    float diff = lumaRight - lumaLeft;
-    float result = 0.0f;
-
-    if (diff > threshold)
-    {
-        result = -1.0f;
-    }
-    else
-    {
-        if (diff < -threshold)
-        {
-            result = +1.0f;
-        }
-    }
-
-    return result;
-}
 
 // ----------------------------------------------------
 // フルスクリーンクアッド用 VS
@@ -90,22 +32,35 @@ void VertexShader1(in  float4 inPosition  : POSITION,
 }
 
 // ----------------------------------------------------
-// 簡易 FXAA 風ピクセルシェーダ
+// 輝度計算
 // ----------------------------------------------------
+
+float Luminance(float3 color)
+{
+    return dot(color, float3(0.299f, 0.587f, 0.114f));
+}
+
+// ----------------------------------------------------
+// エッジ可視化用ピクセルシェーダ
+// ----------------------------------------------------
+
 void PixelShader1(in float4 inPosition    : POSITION,
                   in float2 inTexCood     : TEXCOORD0,
 
                   out float4 outColor     : COLOR)
 {
     float2 uv = inTexCood;
-    uv.x += 1.f / 1600 / 2.f;
-    uv.y += 1.f / 900 / 2.f;
 
-    float3 centerColor = SampleScene(uv);
-    float3 upColor     = SampleScene(uv + float2(0.0f, -g_TexelSize.y));
-    float3 downColor   = SampleScene(uv + float2(0.0f,  g_TexelSize.y));
-    float3 leftColor   = SampleScene(uv + float2(-g_TexelSize.x, 0.0f));
-    float3 rightColor  = SampleScene(uv + float2( g_TexelSize.x, 0.0f));
+    // 以前のコードと同じく、半ピクセルオフセットを入れておく
+    uv.x += 1.0f / 1600.0f / 2.0f;
+    uv.y += 1.0f / 900.0f  / 2.0f;
+
+    // 中心と上下左右をサンプル
+    float3 centerColor = tex2D(textureSampler, uv).rgb;
+    float3 upColor     = tex2D(textureSampler, uv + float2(0.0f, -g_TexelSize.y)).rgb;
+    float3 downColor   = tex2D(textureSampler, uv + float2(0.0f,  g_TexelSize.y)).rgb;
+    float3 leftColor   = tex2D(textureSampler, uv + float2(-g_TexelSize.x, 0.0f)).rgb;
+    float3 rightColor  = tex2D(textureSampler, uv + float2( g_TexelSize.x, 0.0f)).rgb;
 
     float centerLuma = Luminance(centerColor);
     float upLuma     = Luminance(upColor);
@@ -113,169 +68,54 @@ void PixelShader1(in float4 inPosition    : POSITION,
     float leftLuma   = Luminance(leftColor);
     float rightLuma  = Luminance(rightColor);
 
-    float verticalContrast   = abs(upLuma   - downLuma);
-    float horizontalContrast = abs(leftLuma - rightLuma);
+    // エッジ判定用のしきい値
+    float edgeThreshold = 0.08f;
 
-    float edgeThreshold = 0.15f;
+    // どれか一つでも輝度差がしきい値を超えていれば「エッジ候補」
+    bool isEdgeCandidate = false;
 
-    if (verticalContrast < edgeThreshold && horizontalContrast < edgeThreshold)
+    if (abs(centerLuma - upLuma) > edgeThreshold)
     {
-        outColor = float4(centerColor, 1.0f);
-        return;
+        isEdgeCandidate = true;
     }
 
-    bool isHorizontalEdge = (verticalContrast >= horizontalContrast);
-
-    float3 resultColor = centerColor;
-
-    if (isHorizontalEdge)
+    if (abs(centerLuma - downLuma) > edgeThreshold)
     {
-        float classifyThreshold = edgeThreshold * 0.5f;
-        float baseClass = ClassifyVertical(upLuma, downLuma, classifyThreshold);
+        isEdgeCandidate = true;
+    }
 
-        if (baseClass == 0.0f)
-        {
-            resultColor = centerColor;
-        }
-        else
-        {
-            float leftLength = 0.0f;
-            float rightLength = 0.0f;
+    if (abs(centerLuma - leftLuma) > edgeThreshold)
+    {
+        isEdgeCandidate = true;
+    }
 
-            for (int step = 1; step <= 8; step++)
-            {
-                float2 offset = float2(-g_TexelSize.x * (float)step, 0.0f);
+    if (abs(centerLuma - rightLuma) > edgeThreshold)
+    {
+        isEdgeCandidate = true;
+    }
 
-                float3 upColorL   = SampleScene(uv + offset + float2(0.0f, -g_TexelSize.y));
-                float3 downColorL = SampleScene(uv + offset + float2(0.0f,  g_TexelSize.y));
+    // 中央が上下左右より「明るい」場合だけ輪郭として採用
+    // これで境界の明るい側 1 ピクセルだけが選ばれる
+    bool isBrighterThanNeighbors = false;
 
-                float upLumaL   = Luminance(upColorL);
-                float downLumaL = Luminance(downColorL);
+    if (centerLuma >= upLuma &&
+        centerLuma >= downLuma &&
+        centerLuma >= leftLuma &&
+        centerLuma >= rightLuma)
+    {
+        isBrighterThanNeighbors = true;
+    }
 
-                float classL = ClassifyVertical(upLumaL, downLumaL, classifyThreshold);
-
-                if (classL != baseClass)
-                {
-                    leftLength = (float)step;
-                    break;
-                }
-            }
-
-            if (leftLength == 0.0f)
-            {
-                leftLength = 0.0f;
-            }
-
-            for (int step = 1; step <= 8; step++)
-            {
-                float2 offset = float2(g_TexelSize.x * (float)step, 0.0f);
-
-                float3 upColorR   = SampleScene(uv + offset + float2(0.0f, -g_TexelSize.y));
-                float3 downColorR = SampleScene(uv + offset + float2(0.0f,  g_TexelSize.y));
-
-                float upLumaR   = Luminance(upColorR);
-                float downLumaR = Luminance(downColorR);
-
-                float classR = ClassifyVertical(upLumaR, downLumaR, classifyThreshold);
-
-                if (classR != baseClass)
-                {
-                    rightLength = (float)step;
-                    break;
-                }
-            }
-
-            if (rightLength == 0.0f)
-            {
-                rightLength = 0.0f;
-            }
-
-            float span = leftLength + rightLength;
-            float position = leftLength / span;
-
-            float t = position;
-
-            float3 blended = lerp(upColor, downColor, t);
-
-            float amount = 0.7f;
-            resultColor = lerp(centerColor, blended, amount);
-        }
+    if (isEdgeCandidate && isBrighterThanNeighbors)
+    {
+        // 輪郭線を赤で表示
+        outColor = float4(1.0f, 0.0f, 0.0f, 1.0f);
     }
     else
     {
-        float classifyThreshold = edgeThreshold * 0.5f;
-        float baseClass = ClassifyHorizontal(leftLuma, rightLuma, classifyThreshold);
-
-        if (baseClass == 0.0f)
-        {
-            resultColor = centerColor;
-        }
-        else
-        {
-            float upLength = 0.0f;
-            float downLength = 0.0f;
-
-            for (int step = 1; step <= 8; step++)
-            {
-                float2 offset = float2(0.0f, -g_TexelSize.y * (float)step);
-
-                float3 leftColorU  = SampleScene(uv + offset + float2(-g_TexelSize.x, 0.0f));
-                float3 rightColorU = SampleScene(uv + offset + float2( g_TexelSize.x, 0.0f));
-
-                float leftLumaU  = Luminance(leftColorU);
-                float rightLumaU = Luminance(rightColorU);
-
-                float classU = ClassifyHorizontal(leftLumaU, rightLumaU, classifyThreshold);
-
-                if (classU != baseClass)
-                {
-                    upLength = (float)step;
-                    break;
-                }
-            }
-
-            if (upLength == 0.0f)
-            {
-                upLength = 0.0f;
-            }
-
-            for (int step = 1; step <= 8; step++)
-            {
-                float2 offset = float2(0.0f, g_TexelSize.y * (float)step);
-
-                float3 leftColorD  = SampleScene(uv + offset + float2(-g_TexelSize.x, 0.0f));
-                float3 rightColorD = SampleScene(uv + offset + float2( g_TexelSize.x, 0.0f));
-
-                float leftLumaD  = Luminance(leftColorD);
-                float rightLumaD = Luminance(rightColorD);
-
-                float classD = ClassifyHorizontal(leftLumaD, rightLumaD, classifyThreshold);
-
-                if (classD != baseClass)
-                {
-                    downLength = (float)step;
-                    break;
-                }
-            }
-
-            if (downLength == 0.0f)
-            {
-                downLength = 0.0f;
-            }
-
-            float span = upLength + downLength;
-            float position = upLength / span;
-
-            float t = position;
-
-            float3 blended = lerp(leftColor, rightColor, t);
-
-            float amount = 0.7f;
-            resultColor = lerp(centerColor, blended, amount);
-        }
+        // それ以外は元の色
+        outColor = float4(centerColor, 1.0f);
     }
-
-    outColor = float4(resultColor, 1.0f);
 }
 
 technique Technique1
