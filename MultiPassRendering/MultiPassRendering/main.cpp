@@ -358,7 +358,7 @@ void RenderPass1()
     assert(hResult == S_OK);
 
     static float f = 0.0f;
-    f += 0.025f;
+    f += 0.005f;
 
     D3DXMATRIX mat;
     D3DXMATRIX View, Proj;

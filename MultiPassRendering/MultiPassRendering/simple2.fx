@@ -27,6 +27,9 @@ void PixelShader1(in float4 inPosition    : POSITION,
 
                   out float4 outColor     : COLOR)
 {
+    inTexCood.x += 1.0f / 1600.f / 2.f;
+    inTexCood.y += 1.0f / 900.f / 2.f;
+
     float4 workColor = (float4)0;
     workColor = tex2D(textureSampler, inTexCood);
 
