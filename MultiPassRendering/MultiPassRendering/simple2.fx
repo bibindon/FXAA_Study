@@ -21,7 +21,7 @@ float g_EdgeThreshold = 0.02f;
 
 // 左右に調べる半径（±4 ピクセル）
 // 値を変えたいときはここを編集すればよい
-static const int SEARCH_RADIUS = 16;
+static const int SEARCH_RADIUS = 4;
 
 
 //----------------------------------------------------
@@ -209,10 +209,10 @@ void PixelShader1(in float4 inPosition    : POSITION,
         return;
     }
 
-    // 崖が見つからない場合は、壁から4つ離れたところにある、ということにして処理する
+    // 崖が見つからない場合は、壁から9つ離れたところにある、ということにして処理する
     if (!hasLeftCliff && !hasRightCliff)
     {
-        cliffIndex = (SEARCH_RADIUS + 1) - abs(wallIndex);
+        cliffIndex = (SEARCH_RADIUS * 2 + 1) - abs(wallIndex);
     }
 
     float span = (float) (abs(wallIndex) + abs(cliffIndex)) + 1;
