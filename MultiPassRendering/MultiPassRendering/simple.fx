@@ -5,11 +5,12 @@ float3 g_ambient = { 0.3f, 0.3f, 0.3f };
 bool g_bUseTexture = true;
 
 texture texture1;
-sampler textureSampler = sampler_state {
+sampler textureSampler = sampler_state
+{
     Texture = (texture1);
-    MipFilter = LINEAR;
-    MinFilter = LINEAR;
-    MagFilter = LINEAR;
+    MipFilter = POINT;
+    MinFilter = POINT;
+    MagFilter = POINT;
 };
 
 void VertexShader1(in  float4 inPosition  : POSITION,
@@ -24,7 +25,7 @@ void VertexShader1(in  float4 inPosition  : POSITION,
 
     float lightIntensity = dot(inNormal, g_lightNormal);
     outDiffuse.rgb = max(0, lightIntensity) + g_ambient;
-//    outDiffuse.a = 1.0f;
+    outDiffuse.a = 1.0f;
 
     outTexCood = inTexCood;
 }

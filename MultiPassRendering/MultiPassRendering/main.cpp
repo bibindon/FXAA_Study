@@ -358,7 +358,7 @@ void RenderPass1()
     assert(hResult == S_OK);
 
     static float f = 0.0f;
-    f += 0.005f;
+    f += 0.025f;
 
     D3DXMATRIX mat;
     D3DXMATRIX View, Proj;
@@ -369,9 +369,10 @@ void RenderPass1()
                                0.001f,
                                100.0f);
 
-    //D3DXVECTOR3 vec1(10 * sinf(f), 5, -10 * cosf(f));
-    D3DXVECTOR3 vec1(0 , 2, (-50 * abs(cosf(f)) - 5));
-    D3DXVECTOR3 vec2(0, 0, (-50 * abs(cosf(f))));
+    D3DXVECTOR3 vec1(10 * sinf(f), 2, -10 * cosf(f));
+//    D3DXVECTOR3 vec1(0 , 2, (-50 * abs(cosf(f)) - 5));
+    //D3DXVECTOR3 vec2(0, 0, (-50 * abs(cosf(f))));
+    D3DXVECTOR3 vec2(0, 0, 0);
     D3DXVECTOR3 vec3(0, 1, 0);
     D3DXMatrixLookAtLH(&View, &vec1, &vec2, &vec3);
     D3DXMatrixIdentity(&mat);
