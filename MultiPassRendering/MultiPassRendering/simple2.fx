@@ -13,13 +13,20 @@ sampler textureSampler = sampler_state
     MagFilter = POINT;
 };
 
-// 画面上での 1 ピクセル分 (1 / width, 1 / height) を C++ から渡す
+// 画面上での 1 ピクセル分 (1 / width, 1 / height)
 float2 g_TexelSize;
 
+// エッジ判定用のしきい値
+float g_EdgeThreshold = 0.02f;
 
-// ----------------------------------------------------
+// 左右に調べる半径（±4 ピクセル）
+// 値を変えたいときはここを編集すればよい
+static const int SEARCH_RADIUS = 16;
+
+
+//----------------------------------------------------
 // フルスクリーンクアッド用 VS
-// ----------------------------------------------------
+//----------------------------------------------------
 
 void VertexShader1(in  float4 inPosition  : POSITION,
                    in  float2 inTexCood   : TEXCOORD0,
@@ -31,18 +38,19 @@ void VertexShader1(in  float4 inPosition  : POSITION,
     outTexCood = inTexCood;
 }
 
-// ----------------------------------------------------
+
+//----------------------------------------------------
 // 輝度計算
-// ----------------------------------------------------
+//----------------------------------------------------
 
 float Luminance(float3 color)
 {
     return dot(color, float3(0.299f, 0.587f, 0.114f));
 }
 
-// ----------------------------------------------------
-// エッジ可視化用ピクセルシェーダ
-// ----------------------------------------------------
+//----------------------------------------------------
+// 水平エッジ用 簡易 FXAA
+//----------------------------------------------------
 
 void PixelShader1(in float4 inPosition    : POSITION,
                   in float2 inTexCood     : TEXCOORD0,
@@ -51,11 +59,9 @@ void PixelShader1(in float4 inPosition    : POSITION,
 {
     float2 uv = inTexCood;
 
-    // 以前のコードと同じく、半ピクセルオフセットを入れておく
-    uv.x += 1.0f / 1600.0f / 2.0f;
-    uv.y += 1.0f / 900.0f  / 2.0f;
+    uv.x += g_TexelSize.x * 0.5f;
+    uv.y += g_TexelSize.y * 0.5f;
 
-    // 中心と上下左右をサンプル
     float3 centerColor = tex2D(textureSampler, uv).rgb;
     float3 upColor     = tex2D(textureSampler, uv + float2(0.0f, -g_TexelSize.y)).rgb;
     float3 downColor   = tex2D(textureSampler, uv + float2(0.0f,  g_TexelSize.y)).rgb;
@@ -68,53 +74,166 @@ void PixelShader1(in float4 inPosition    : POSITION,
     float leftLuma   = Luminance(leftColor);
     float rightLuma  = Luminance(rightColor);
 
-    // エッジ判定用のしきい値
-    float edgeThreshold = 0.08f;
+    float verticalDiff   = abs(upLuma - downLuma);
 
-    // どれか一つでも輝度差がしきい値を超えていれば「エッジ候補」
+    float edgeThreshold = g_EdgeThreshold;
+
+    // まず「上が白、下が黒」で、中央が明るい側 1px だけを対象にする
     bool isEdgeCandidate = false;
 
-    if (abs(centerLuma - upLuma) > edgeThreshold)
+    if (verticalDiff > edgeThreshold)
     {
-        isEdgeCandidate = true;
+        if (upLuma > downLuma + edgeThreshold)
+        {
+            if (centerLuma >= upLuma &&
+                centerLuma >= downLuma &&
+                centerLuma >= leftLuma &&
+                centerLuma >= rightLuma)
+            {
+                isEdgeCandidate = true;
+            }
+        }
     }
 
-    if (abs(centerLuma - downLuma) > edgeThreshold)
+    if (!isEdgeCandidate)
     {
-        isEdgeCandidate = true;
+        outColor = float4(centerColor, 1.0f);
+        return;
     }
 
-    if (abs(centerLuma - leftLuma) > edgeThreshold)
+    // 明るいとみなす輝度のしきい値
+    float brightThreshold = 0.7f;
+
+    int leftCliffIndex  = -1;
+    int rightCliffIndex = 1;
+    int leftWallIndex   = 0;
+    int rightWallIndex  = 0;
+
+    bool hasLeftCliff   = false;
+    bool hasRightCliff  = false;
+    bool hasLeftWall    = false;
+    bool hasRightWall   = false;
+
+    // 左側を探索
+    [unroll]
+    for (int step = 0; step <= SEARCH_RADIUS; step++)
     {
-        isEdgeCandidate = true;
+        float2 cellUv = uv + float2(-g_TexelSize.x * (float)step, 0.0f);
+
+        float3 cellUpColor    = tex2D(textureSampler, cellUv + float2(0.0f, -g_TexelSize.y)).rgb;
+        float3 cellDownColor  = tex2D(textureSampler, cellUv + float2(0.0f,  g_TexelSize.y)).rgb;
+        float3 cellLeftColor  = tex2D(textureSampler, cellUv + float2(-g_TexelSize.x, 0.0f)).rgb;
+        float3 cellRightColor = tex2D(textureSampler, cellUv + float2( g_TexelSize.x, 0.0f)).rgb;
+
+        float cellUpLuma    = Luminance(cellUpColor);
+        float cellDownLuma  = Luminance(cellDownColor);
+        float cellLeftLuma  = Luminance(cellLeftColor);
+        float cellRightLuma = Luminance(cellRightColor);
+
+        float cellVerticalDiff   = abs(cellUpLuma   - cellDownLuma);
+        float cellHorizontalDiff = abs(cellLeftLuma - cellRightLuma);
+
+        // 壁か
+        if (cellHorizontalDiff > edgeThreshold)
+        {
+            leftWallIndex = -(step + 1);
+            hasLeftWall = true;
+            break;
+        }
+
+        // 崖か
+        if (cellVerticalDiff < edgeThreshold)
+        {
+            leftCliffIndex = -step;
+            hasLeftCliff = true;
+            break;
+        }
     }
 
-    if (abs(centerLuma - rightLuma) > edgeThreshold)
+    // 右側を探索
+    [unroll]
+    for (int step2 = 0; step2 <= SEARCH_RADIUS; step2++)
     {
-        isEdgeCandidate = true;
+        float2 cellUv = uv + float2(g_TexelSize.x * (float)step2, 0.0f);
+
+        float3 cellUpColor    = tex2D(textureSampler, cellUv + float2(0.0f, -g_TexelSize.y)).rgb;
+        float3 cellDownColor  = tex2D(textureSampler, cellUv + float2(0.0f,  g_TexelSize.y)).rgb;
+        float3 cellLeftColor  = tex2D(textureSampler, cellUv + float2(-g_TexelSize.x, 0.0f)).rgb;
+        float3 cellRightColor = tex2D(textureSampler, cellUv + float2( g_TexelSize.x, 0.0f)).rgb;
+
+        float cellUpLuma    = Luminance(cellUpColor);
+        float cellDownLuma  = Luminance(cellDownColor);
+        float cellLeftLuma  = Luminance(cellLeftColor);
+        float cellRightLuma = Luminance(cellRightColor);
+
+        float cellVerticalDiff   = abs(cellUpLuma   - cellDownLuma);
+        float cellHorizontalDiff = abs(cellLeftLuma - cellRightLuma);
+
+        // 壁か
+        if (cellHorizontalDiff > edgeThreshold)
+        {
+            rightWallIndex = step2 + 1;
+            hasRightWall = true;
+            break;
+        }
+
+        // 崖か
+        if (cellVerticalDiff < edgeThreshold)
+        {
+            rightCliffIndex = step2;
+            hasRightCliff = true;
+            break;
+        }
     }
 
-    // 中央が上下左右より「明るい」場合だけ輪郭として採用
-    // これで境界の明るい側 1 ピクセルだけが選ばれる
-    bool isBrighterThanNeighbors = false;
+    int cliffIndex = 0;
+    int wallIndex  = 0;
 
-    if (centerLuma >= upLuma &&
-        centerLuma >= downLuma &&
-        centerLuma >= leftLuma &&
-        centerLuma >= rightLuma)
+    if (hasRightWall)
     {
-        isBrighterThanNeighbors = true;
-    }
-
-    if (isEdgeCandidate && isBrighterThanNeighbors)
-    {
-        // 輪郭線を赤で表示
-        outColor = float4(1.0f, 0.0f, 0.0f, 1.0f);
+        cliffIndex = leftCliffIndex;
+        wallIndex = rightWallIndex;
     }
     else
     {
-        // それ以外は元の色
+        if (hasLeftWall)
+        {
+            cliffIndex = rightCliffIndex;
+            wallIndex = leftWallIndex;
+        }
+    }
+
+    if (!hasRightWall && !hasLeftWall)
+    {
         outColor = float4(centerColor, 1.0f);
+        return;
+    }
+
+    // 崖が見つからない場合は、壁から4つ離れたところにある、ということにして処理する
+    if (!hasLeftCliff && !hasRightCliff)
+    {
+        cliffIndex = (SEARCH_RADIUS + 1) - abs(wallIndex);
+    }
+
+    float span = (float) (abs(wallIndex) + abs(cliffIndex)) + 1;
+
+    float position = (float) (abs(cliffIndex));
+    float t = position / span;
+    t = saturate(t);
+
+    float3 aaColor = lerp(upColor, downColor, t); 
+
+    if (true)
+    {
+        outColor = float4(aaColor, 1.0f);
+        return;
+    }
+    else
+    {
+        // デバッグ用
+        outColor = float4(centerColor, 1.0f);
+        outColor.rg = (aaColor.r + aaColor.g + aaColor.b) / 3;
+        return;
     }
 }
 

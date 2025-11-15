@@ -15,8 +15,8 @@
 
 #define SAFE_RELEASE(p) { if (p) { (p)->Release(); (p) = NULL; } }
 
-const int SCREEN_W = 1600;
-const int SCREEN_H = 900;
+const int SCREEN_W = 320;
+const int SCREEN_H = 240;
 
 LPDIRECT3D9 g_pD3D = NULL;
 LPDIRECT3DDEVICE9 g_pd3dDevice = NULL;
@@ -371,7 +371,7 @@ void RenderPass1()
                                0.001f,
                                100.0f);
 
-    D3DXVECTOR3 vec1(10 * sinf(f), 2, -10 * cosf(f));
+    D3DXVECTOR3 vec1(10 * sinf(f), 0, -10 * cosf(f));
 //    D3DXVECTOR3 vec1(0 , 2, (-50 * abs(cosf(f)) - 5));
     //D3DXVECTOR3 vec2(0, 0, (-50 * abs(cosf(f))));
     D3DXVECTOR3 vec2(0, 0, 0);
