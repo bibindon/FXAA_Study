@@ -375,7 +375,7 @@ void RenderPass1()
 //    D3DXVECTOR3 vec1(0 , 2, (-50 * abs(cosf(f)) - 5));
     //D3DXVECTOR3 vec2(0, 0, (-50 * abs(cosf(f))));
     D3DXVECTOR3 vec2(0, 0, 0);
-    D3DXVECTOR3 vec3(0, 1, 0);
+    D3DXVECTOR3 vec3(0, 1, 0.3);
     D3DXMatrixLookAtLH(&View, &vec1, &vec2, &vec3);
     D3DXMatrixIdentity(&mat);
     mat = mat * View * Proj;
