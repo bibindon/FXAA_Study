@@ -1,12 +1,3 @@
-//----------------------------------------------------
-// 1. 壁と崖を探して右方向を調べる
-// 2. 壁と崖を探して左方向を調べる
-// 3. 右1ピクセルに壁、左4ピクセルに崖だった場合、80％壁の色
-//    右に4ピクセル移動した場所に壁、左に1ピクセル移動した場所に崖がある場合、20％壁の色
-//    というようにする
-//
-// 壁は見つかるが、崖が見つからない場合、4ピクセル遠くに崖があるものとして処理する。
-//----------------------------------------------------
 float4x4 g_matWorldViewProj;
 float4 g_lightNormal = { 0.3f, 1.0f, 0.5f, 0.0f };
 float3 g_ambient = { 0.3f, 0.3f, 0.3f };
@@ -22,20 +13,9 @@ sampler textureSampler = sampler_state
     MagFilter = POINT;
 };
 
-// 画面上での 1 ピクセル分 (1 / width, 1 / height)
 float2 g_TexelSize;
-
-// エッジ判定用のしきい値
 float g_EdgeThreshold = 0.02f;
-
-// 左右に調べる半径（±4 ピクセル）
-// 値を変えたいときはここを編集すればよい
-static const int SEARCH_RADIUS = 4;
-
-
-//----------------------------------------------------
-// フルスクリーンクアッド用 VS
-//----------------------------------------------------
+static const int SEARCH_RADIUS = 16;
 
 void VertexShader1(in  float4 inPosition  : POSITION,
                    in  float2 inTexCood   : TEXCOORD0,
@@ -47,19 +27,10 @@ void VertexShader1(in  float4 inPosition  : POSITION,
     outTexCood = inTexCood;
 }
 
-
-//----------------------------------------------------
-// 輝度計算
-//----------------------------------------------------
-
 float Luminance(float3 color)
 {
     return dot(color, float3(0.299f, 0.587f, 0.114f));
 }
-
-//----------------------------------------------------
-// 水平エッジ用 簡易 FXAA
-//----------------------------------------------------
 
 void PixelShader1(in float4 inPosition    : POSITION,
                   in float2 inTexCood     : TEXCOORD0,
@@ -83,11 +54,9 @@ void PixelShader1(in float4 inPosition    : POSITION,
     float leftLuma   = Luminance(leftColor);
     float rightLuma  = Luminance(rightColor);
 
-    float verticalDiff   = abs(upLuma - downLuma);
-
+    float verticalDiff = abs(upLuma - downLuma);
     float edgeThreshold = g_EdgeThreshold;
 
-    // まず「上が白、下が黒」で、中央が明るい側 1px だけを対象にする
     bool isEdgeCandidate = false;
 
     if (verticalDiff > edgeThreshold)
@@ -110,9 +79,6 @@ void PixelShader1(in float4 inPosition    : POSITION,
         return;
     }
 
-    // 明るいとみなす輝度のしきい値
-    float brightThreshold = 0.7f;
-
     int leftCliffIndex  = -1;
     int rightCliffIndex = 1;
     int leftWallIndex   = 0;
@@ -123,7 +89,6 @@ void PixelShader1(in float4 inPosition    : POSITION,
     bool hasLeftWall    = false;
     bool hasRightWall   = false;
 
-    // 左側を探索
     [unroll]
     for (int step = 0; step <= SEARCH_RADIUS; step++)
     {
@@ -142,7 +107,6 @@ void PixelShader1(in float4 inPosition    : POSITION,
         float cellVerticalDiff   = abs(cellUpLuma   - cellDownLuma);
         float cellHorizontalDiff = abs(cellLeftLuma - cellRightLuma);
 
-        // 壁か
         if (cellHorizontalDiff > edgeThreshold)
         {
             leftWallIndex = -(step + 1);
@@ -150,7 +114,6 @@ void PixelShader1(in float4 inPosition    : POSITION,
             break;
         }
 
-        // 崖か
         if (cellVerticalDiff < edgeThreshold)
         {
             leftCliffIndex = -step;
@@ -159,7 +122,6 @@ void PixelShader1(in float4 inPosition    : POSITION,
         }
     }
 
-    // 右側を探索
     [unroll]
     for (int step2 = 0; step2 <= SEARCH_RADIUS; step2++)
     {
@@ -178,7 +140,6 @@ void PixelShader1(in float4 inPosition    : POSITION,
         float cellVerticalDiff   = abs(cellUpLuma   - cellDownLuma);
         float cellHorizontalDiff = abs(cellLeftLuma - cellRightLuma);
 
-        // 壁か
         if (cellHorizontalDiff > edgeThreshold)
         {
             rightWallIndex = step2 + 1;
@@ -186,7 +147,6 @@ void PixelShader1(in float4 inPosition    : POSITION,
             break;
         }
 
-        // 崖か
         if (cellVerticalDiff < edgeThreshold)
         {
             rightCliffIndex = step2;
@@ -203,13 +163,10 @@ void PixelShader1(in float4 inPosition    : POSITION,
         cliffIndex = leftCliffIndex;
         wallIndex = rightWallIndex;
     }
-    else
+    else if (hasLeftWall)
     {
-        if (hasLeftWall)
-        {
-            cliffIndex = rightCliffIndex;
-            wallIndex = leftWallIndex;
-        }
+        cliffIndex = rightCliffIndex;
+        wallIndex = leftWallIndex;
     }
 
     if (!hasRightWall && !hasLeftWall)
@@ -218,32 +175,24 @@ void PixelShader1(in float4 inPosition    : POSITION,
         return;
     }
 
-    // 崖が見つからない場合は、壁から9つ離れたところにある、ということにして処理する
-    if (!hasLeftCliff && !hasRightCliff)
+    float t = 0.0f;
+
+    if (hasLeftCliff || hasRightCliff)
     {
-        cliffIndex = (SEARCH_RADIUS * 2 + 1) - abs(wallIndex);
-    }
-
-    float span = (float) (abs(wallIndex) + abs(cliffIndex)) + 1;
-
-    float position = (float) (abs(cliffIndex));
-    float t = position / span;
-    t = saturate(t);
-
-    float3 aaColor = lerp(upColor, downColor, t); 
-
-    if (true)
-    {
-        outColor = float4(aaColor, 1.0f);
-        return;
+        float span = (float)(abs(wallIndex) + abs(cliffIndex)) + 1.0f;
+        float position = (float)abs(cliffIndex);
+        t = position / span;
     }
     else
     {
-        // デバッグ用
-        outColor = float4(centerColor, 1.0f);
-        outColor.rg = (aaColor.r + aaColor.g + aaColor.b) / 3;
-        return;
+        float wallDistance = (float)abs(wallIndex);
+        t = ((float)SEARCH_RADIUS + 2.0f - wallDistance) / ((float)SEARCH_RADIUS + 1.0f);
     }
+
+    t = saturate(t);
+
+    float3 aaColor = lerp(upColor, downColor, t);
+    outColor = float4(aaColor, 1.0f);
 }
 
 technique Technique1
