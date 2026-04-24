@@ -68,12 +68,14 @@ void PixelShader1(in float4 inPosition    : POSITION,
     float downLeftLuma  = Luminance(downLeftColor);
     float downRightLuma = Luminance(downRightColor);
 
+    // 3x3の中で暗い側を判定するため、局所的な明暗の中間値をしきい値にする。
     float minLuma = min(min(min(upLeftLuma, upLuma), min(upRightLuma, leftLuma)),
                         min(min(centerLuma, rightLuma), min(downLeftLuma, min(downLuma, downRightLuma))));
     float maxLuma = max(max(max(upLeftLuma, upLuma), max(upRightLuma, leftLuma)),
                         max(max(centerLuma, rightLuma), max(downLeftLuma, max(downLuma, downRightLuma))));
     float darkThreshold = (minLuma + maxLuma) * 0.5f;
 
+    // AAで塗り替えるのは、元々明るい側にある境界ピクセルだけにする。
     bool isCenterDark = (centerLuma < darkThreshold);
     int dark1 = (upLeftLuma    < darkThreshold) ? 1 : 0;
     int dark2 = (upLuma        < darkThreshold) ? 1 : 0;
@@ -104,6 +106,7 @@ void PixelShader1(in float4 inPosition    : POSITION,
 
     if (!isCenterDark && maxLuma - minLuma > edgeThreshold)
     {
+        // 3x3で暗いピクセルが最も多い方向を「暗い側」として採用する。
         int bestScore = topScore;
         selectedMode = MODE_TOP_DARK;
 
@@ -156,6 +159,7 @@ void PixelShader1(in float4 inPosition    : POSITION,
     bool hasLeftWall    = false;
     bool hasRightWall   = false;
 
+    // 選ばれたエッジ方向に沿って左/上側を探索し、崖と壁を探す。
     [unroll]
     for (int step = 0; step <= SEARCH_RADIUS; step++)
     {
@@ -211,6 +215,7 @@ void PixelShader1(in float4 inPosition    : POSITION,
         }
     }
 
+    // 選ばれたエッジ方向に沿って右/下側を探索し、崖と壁を探す。
     [unroll]
     for (int step2 = 0; step2 <= SEARCH_RADIUS; step2++)
     {
@@ -269,7 +274,18 @@ void PixelShader1(in float4 inPosition    : POSITION,
     int cliffIndex = 0;
     int wallIndex  = 0;
 
-    if (hasRightWall)
+    // 崖と壁が反対側に揃っている組み合わせを優先して採用する。
+    if (hasLeftWall && hasRightCliff)
+    {
+        cliffIndex = rightCliffIndex;
+        wallIndex = leftWallIndex;
+    }
+    else if (hasRightWall && hasLeftCliff)
+    {
+        cliffIndex = leftCliffIndex;
+        wallIndex = rightWallIndex;
+    }
+    else if (hasRightWall)
     {
         cliffIndex = leftCliffIndex;
         wallIndex = rightWallIndex;
@@ -288,6 +304,7 @@ void PixelShader1(in float4 inPosition    : POSITION,
 
     float t = 0.0f;
 
+    // 崖から現在ピクセルまでの相対位置をtとして求める。
     if (hasLeftCliff || hasRightCliff)
     {
         float span = (float)(abs(wallIndex) + abs(cliffIndex)) + 1.0f;
@@ -317,6 +334,7 @@ void PixelShader1(in float4 inPosition    : POSITION,
     if (isTopBrightBottomDark)
     {
         aaColor = lerp(upColor, downColor, t);
+        //aaColor.rgb = t;
     }
     else if (isTopDarkBottomBright)
     {
