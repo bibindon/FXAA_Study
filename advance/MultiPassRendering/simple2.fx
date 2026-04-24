@@ -184,7 +184,8 @@ void PixelShader1(in float4 inPosition    : POSITION,
         if (span <= (float)SEARCH_RADIUS)
         {
             float position = (float)abs(cliffIndex);
-            t = position / span;
+            float interiorSpan = max(span - 1.0f, 1.0f);
+            t = position / interiorSpan;
         }
         else
         {
