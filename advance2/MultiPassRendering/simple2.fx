@@ -158,7 +158,7 @@ void PixelShader1(in float4 inPosition    : POSITION,
     isTopDarkBottomBright = (selectedMode == MODE_TOP_DARK);
     isLeftBrightRightDark = (selectedMode == MODE_RIGHT_DARK);
     isLeftDarkRightBright = (selectedMode == MODE_LEFT_DARK);
-    isEdgeCandidate = isTopBrightBottomDark || isTopDarkBottomBright || isLeftBrightRightDark;
+    isEdgeCandidate = isTopBrightBottomDark || isTopDarkBottomBright || isLeftBrightRightDark || isLeftDarkRightBright;
 
     if (!isEdgeCandidate)
     {
@@ -167,7 +167,7 @@ void PixelShader1(in float4 inPosition    : POSITION,
     }
 
     bool useHorizontalSearch = isTopBrightBottomDark || isTopDarkBottomBright;
-    bool useVerticalSearch = isLeftBrightRightDark;
+    bool useVerticalSearch = isLeftBrightRightDark || isLeftDarkRightBright;
 
     int leftCliffIndex  = -1;
     int rightCliffIndex = 1;
@@ -348,8 +348,11 @@ void PixelShader1(in float4 inPosition    : POSITION,
     }
     else if (isLeftBrightRightDark)
     {
-        //aaColor = lerp(leftColor, rightColor, t);
-        //aaColor.g = 255;
+        aaColor = lerp(leftColor, rightColor, t);
+    }
+    else if (isLeftDarkRightBright)
+    {
+        aaColor = lerp(leftColor, rightColor, t);
     }
 
     outColor = float4(aaColor, 1.0f);
