@@ -180,13 +180,22 @@ void PixelShader1(in float4 inPosition    : POSITION,
     if (hasLeftCliff || hasRightCliff)
     {
         float span = (float)(abs(wallIndex) + abs(cliffIndex)) + 1.0f;
-        float position = (float)abs(cliffIndex);
-        t = position / span;
+
+        if (span <= (float)SEARCH_RADIUS)
+        {
+            float position = (float)abs(cliffIndex);
+            t = position / span;
+        }
+        else
+        {
+            float wallDistance = (float)abs(wallIndex);
+            t = ((float)SEARCH_RADIUS - wallDistance) / (float)SEARCH_RADIUS;
+        }
     }
     else
     {
         float wallDistance = (float)abs(wallIndex);
-        t = ((float)SEARCH_RADIUS + 2.0f - wallDistance) / ((float)SEARCH_RADIUS + 1.0f);
+        t = ((float)SEARCH_RADIUS - wallDistance) / (float)SEARCH_RADIUS;
     }
 
     t = saturate(t);
