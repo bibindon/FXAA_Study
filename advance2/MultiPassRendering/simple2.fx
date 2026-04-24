@@ -15,7 +15,7 @@ sampler textureSampler = sampler_state
 
 float2 g_TexelSize;
 float g_EdgeThreshold = 0.02f;
-static const int SEARCH_RADIUS = 16;
+static const int SEARCH_RADIUS = 8;
 
 void VertexShader1(in  float4 inPosition  : POSITION,
                    in  float2 inTexCood   : TEXCOORD0,
@@ -158,13 +158,16 @@ void PixelShader1(in float4 inPosition    : POSITION,
     isTopDarkBottomBright = (selectedMode == MODE_TOP_DARK);
     isLeftBrightRightDark = (selectedMode == MODE_RIGHT_DARK);
     isLeftDarkRightBright = (selectedMode == MODE_LEFT_DARK);
-    isEdgeCandidate = isTopBrightBottomDark || isTopDarkBottomBright;
+    isEdgeCandidate = isTopBrightBottomDark || isTopDarkBottomBright || isLeftBrightRightDark;
 
     if (!isEdgeCandidate)
     {
         outColor = float4(centerColor, 1.0f);
         return;
     }
+
+    bool useHorizontalSearch = isTopBrightBottomDark || isTopDarkBottomBright;
+    bool useVerticalSearch = isLeftBrightRightDark;
 
     int leftCliffIndex  = -1;
     int rightCliffIndex = 1;
@@ -179,7 +182,9 @@ void PixelShader1(in float4 inPosition    : POSITION,
     [unroll]
     for (int step = 0; step <= SEARCH_RADIUS; step++)
     {
-        float2 cellUv = uv + float2(-g_TexelSize.x * (float)step, 0.0f);
+        float2 cellUv = uv + (useHorizontalSearch
+            ? float2(-g_TexelSize.x * (float)step, 0.0f)
+            : float2(0.0f, -g_TexelSize.y * (float)step));
 
         float3 cellUpColor    = tex2D(textureSampler, cellUv + float2(0.0f, -g_TexelSize.y)).rgb;
         float3 cellDownColor  = tex2D(textureSampler, cellUv + float2(0.0f,  g_TexelSize.y)).rgb;
@@ -194,17 +199,37 @@ void PixelShader1(in float4 inPosition    : POSITION,
         float cellVerticalDiff   = abs(cellUpLuma   - cellDownLuma);
         float cellHorizontalDiff = abs(cellLeftLuma - cellRightLuma);
 
-        if (cellHorizontalDiff > edgeThreshold)
+        if (useHorizontalSearch && !hasLeftWall && cellHorizontalDiff > edgeThreshold)
         {
-            leftWallIndex = -(step + 2);
+            leftWallIndex = -(step + 1);
             hasLeftWall = true;
-            break;
         }
 
-        if (cellVerticalDiff < edgeThreshold)
+        if (useVerticalSearch && !hasLeftWall && cellVerticalDiff > edgeThreshold)
+        {
+            leftWallIndex = -(step + 1);
+            hasLeftWall = true;
+        }
+
+        if (useHorizontalSearch && !hasLeftCliff && cellVerticalDiff < edgeThreshold)
         {
             leftCliffIndex = -step;
             hasLeftCliff = true;
+        }
+
+        if (useVerticalSearch && !hasLeftCliff && cellHorizontalDiff < edgeThreshold)
+        {
+            leftCliffIndex = -step;
+            hasLeftCliff = true;
+        }
+
+        if ((hasLeftWall && hasLeftCliff) || (useHorizontalSearch && !useVerticalSearch && hasLeftCliff && step > 0))
+        {
+            break;
+        }
+
+        if ((hasLeftWall && hasLeftCliff) || (useVerticalSearch && !useHorizontalSearch && hasLeftCliff && step > 0))
+        {
             break;
         }
     }
@@ -212,7 +237,9 @@ void PixelShader1(in float4 inPosition    : POSITION,
     [unroll]
     for (int step2 = 0; step2 <= SEARCH_RADIUS; step2++)
     {
-        float2 cellUv = uv + float2(g_TexelSize.x * (float)step2, 0.0f);
+        float2 cellUv = uv + (useHorizontalSearch
+            ? float2(g_TexelSize.x * (float)step2, 0.0f)
+            : float2(0.0f, g_TexelSize.y * (float)step2));
 
         float3 cellUpColor    = tex2D(textureSampler, cellUv + float2(0.0f, -g_TexelSize.y)).rgb;
         float3 cellDownColor  = tex2D(textureSampler, cellUv + float2(0.0f,  g_TexelSize.y)).rgb;
@@ -227,17 +254,37 @@ void PixelShader1(in float4 inPosition    : POSITION,
         float cellVerticalDiff   = abs(cellUpLuma   - cellDownLuma);
         float cellHorizontalDiff = abs(cellLeftLuma - cellRightLuma);
 
-        if (cellHorizontalDiff > edgeThreshold)
+        if (useHorizontalSearch && !hasRightWall && cellHorizontalDiff > edgeThreshold)
         {
-            rightWallIndex = step2 + 2;
+            rightWallIndex = step2 + 1;
             hasRightWall = true;
-            break;
         }
 
-        if (cellVerticalDiff < edgeThreshold)
+        if (useVerticalSearch && !hasRightWall && cellVerticalDiff > edgeThreshold)
+        {
+            rightWallIndex = step2 + 1;
+            hasRightWall = true;
+        }
+
+        if (useHorizontalSearch && !hasRightCliff && cellVerticalDiff < edgeThreshold)
         {
             rightCliffIndex = step2;
             hasRightCliff = true;
+        }
+
+        if (useVerticalSearch && !hasRightCliff && cellHorizontalDiff < edgeThreshold)
+        {
+            rightCliffIndex = step2;
+            hasRightCliff = true;
+        }
+
+        if ((hasRightWall && hasRightCliff) || (useHorizontalSearch && !useVerticalSearch && hasRightCliff && step2 > 0))
+        {
+            break;
+        }
+
+        if ((hasRightWall && hasRightCliff) || (useVerticalSearch && !useHorizontalSearch && hasRightCliff && step2 > 0))
+        {
             break;
         }
     }
@@ -293,10 +340,16 @@ void PixelShader1(in float4 inPosition    : POSITION,
     if (isTopBrightBottomDark)
     {
         aaColor = lerp(upColor, downColor, t);
+
     }
     else if (isTopDarkBottomBright)
     {
         aaColor = lerp(upColor, downColor, t);
+    }
+    else if (isLeftBrightRightDark)
+    {
+        //aaColor = lerp(leftColor, rightColor, t);
+        //aaColor.g = 255;
     }
 
     outColor = float4(aaColor, 1.0f);
