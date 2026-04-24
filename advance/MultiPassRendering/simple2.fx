@@ -109,7 +109,7 @@ void PixelShader1(in float4 inPosition    : POSITION,
 
         if (cellHorizontalDiff > edgeThreshold)
         {
-            leftWallIndex = -(step + 1);
+            leftWallIndex = -(step + 2);
             hasLeftWall = true;
             break;
         }
@@ -142,7 +142,7 @@ void PixelShader1(in float4 inPosition    : POSITION,
 
         if (cellHorizontalDiff > edgeThreshold)
         {
-            rightWallIndex = step2 + 1;
+            rightWallIndex = step2 + 2;
             hasRightWall = true;
             break;
         }
