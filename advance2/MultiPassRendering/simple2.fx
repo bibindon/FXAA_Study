@@ -58,16 +58,41 @@ void PixelShader1(in float4 inPosition    : POSITION,
     float horizontalDiff = abs(leftLuma - rightLuma);
     float edgeThreshold = g_EdgeThreshold;
 
+    float3 upLeftColor    = tex2D(textureSampler, uv + float2(-g_TexelSize.x, -g_TexelSize.y)).rgb;
+    float3 upRightColor   = tex2D(textureSampler, uv + float2( g_TexelSize.x, -g_TexelSize.y)).rgb;
+    float3 downLeftColor  = tex2D(textureSampler, uv + float2(-g_TexelSize.x,  g_TexelSize.y)).rgb;
+    float3 downRightColor = tex2D(textureSampler, uv + float2( g_TexelSize.x,  g_TexelSize.y)).rgb;
+
+    float upLeftLuma    = Luminance(upLeftColor);
+    float upRightLuma   = Luminance(upRightColor);
+    float downLeftLuma  = Luminance(downLeftColor);
+    float downRightLuma = Luminance(downRightColor);
+
+    float minLuma = min(min(min(upLeftLuma, upLuma), min(upRightLuma, leftLuma)),
+                        min(min(centerLuma, rightLuma), min(downLeftLuma, min(downLuma, downRightLuma))));
+    float maxLuma = max(max(max(upLeftLuma, upLuma), max(upRightLuma, leftLuma)),
+                        max(max(centerLuma, rightLuma), max(downLeftLuma, max(downLuma, downRightLuma))));
+    float darkThreshold = (minLuma + maxLuma) * 0.5f;
+
+    bool isCenterDark = (centerLuma < darkThreshold);
+    int dark1 = (upLeftLuma    < darkThreshold) ? 1 : 0;
+    int dark2 = (upLuma        < darkThreshold) ? 1 : 0;
+    int dark3 = (upRightLuma   < darkThreshold) ? 1 : 0;
+    int dark4 = (leftLuma      < darkThreshold) ? 1 : 0;
+    int dark7 = (downLeftLuma  < darkThreshold) ? 1 : 0;
+    int dark8 = (downLuma      < darkThreshold) ? 1 : 0;
+    int dark9 = (downRightLuma < darkThreshold) ? 1 : 0;
+
+    int topScore = dark1 + dark2 + dark3;
+    int bottomScore = dark7 + dark8 + dark9;
+    int rightScore = dark3 + ((rightLuma < darkThreshold) ? 1 : 0) + dark9;
+    int leftScore = dark1 + dark4 + dark7;
+
     static const int MODE_NONE = 0;
     static const int MODE_BOTTOM_DARK = 1;
     static const int MODE_TOP_DARK = 2;
     static const int MODE_RIGHT_DARK = 3;
     static const int MODE_LEFT_DARK = 4;
-
-    bool canBottomBeDark = false;
-    bool canTopBeDark = false;
-    bool canRightBeDark = false;
-    bool canLeftBeDark = false;
 
     int selectedMode = MODE_NONE;
 
@@ -77,80 +102,32 @@ void PixelShader1(in float4 inPosition    : POSITION,
     bool isLeftDarkRightBright = false;
     bool isEdgeCandidate = false;
 
-    if (verticalDiff > edgeThreshold)
+    if (!isCenterDark && maxLuma - minLuma > edgeThreshold)
     {
-        if (upLuma > downLuma + edgeThreshold)
-        {
-            if (centerLuma >= upLuma &&
-                centerLuma >= downLuma &&
-                centerLuma >= leftLuma &&
-                centerLuma >= rightLuma)
-            {
-                canBottomBeDark = true;
-            }
-        }
-        else if (downLuma > upLuma + edgeThreshold)
-        {
-            if (centerLuma <= upLuma &&
-                centerLuma <= downLuma &&
-                centerLuma <= leftLuma &&
-                centerLuma <= rightLuma)
-            {
-                canTopBeDark = true;
-            }
-        }
-    }
+        int bestScore = topScore;
+        selectedMode = MODE_TOP_DARK;
 
-    if (horizontalDiff > edgeThreshold)
-    {
-        if (leftLuma > rightLuma + edgeThreshold)
-        {
-            if (centerLuma >= upLuma &&
-                centerLuma >= downLuma &&
-                centerLuma >= leftLuma &&
-                centerLuma >= rightLuma)
-            {
-                canRightBeDark = true;
-            }
-        }
-        else if (rightLuma > leftLuma + edgeThreshold)
-        {
-            if (centerLuma <= upLuma &&
-                centerLuma <= downLuma &&
-                centerLuma <= leftLuma &&
-                centerLuma <= rightLuma)
-            {
-                canLeftBeDark = true;
-            }
-        }
-    }
-
-    if (canBottomBeDark || canTopBeDark || canRightBeDark || canLeftBeDark)
-    {
-        float bestScore = -1.0f;
-
-        if (canBottomBeDark && verticalDiff > bestScore)
+        if (bottomScore > bestScore)
         {
             selectedMode = MODE_BOTTOM_DARK;
-            bestScore = verticalDiff;
+            bestScore = bottomScore;
         }
 
-        if (canTopBeDark && verticalDiff > bestScore)
-        {
-            selectedMode = MODE_TOP_DARK;
-            bestScore = verticalDiff;
-        }
-
-        if (canRightBeDark && horizontalDiff > bestScore)
+        if (rightScore > bestScore)
         {
             selectedMode = MODE_RIGHT_DARK;
-            bestScore = horizontalDiff;
+            bestScore = rightScore;
         }
 
-        if (canLeftBeDark && horizontalDiff > bestScore)
+        if (leftScore > bestScore)
         {
             selectedMode = MODE_LEFT_DARK;
-            bestScore = horizontalDiff;
+            bestScore = leftScore;
+        }
+
+        if (bestScore <= 0)
+        {
+            selectedMode = MODE_NONE;
         }
     }
 
@@ -340,11 +317,10 @@ void PixelShader1(in float4 inPosition    : POSITION,
     if (isTopBrightBottomDark)
     {
         aaColor = lerp(upColor, downColor, t);
-
     }
     else if (isTopDarkBottomBright)
     {
-        aaColor = lerp(upColor, downColor, t);
+        aaColor = lerp(downColor, upColor, t);
     }
     else if (isLeftBrightRightDark)
     {
@@ -352,7 +328,7 @@ void PixelShader1(in float4 inPosition    : POSITION,
     }
     else if (isLeftDarkRightBright)
     {
-        aaColor = lerp(leftColor, rightColor, t);
+        aaColor = lerp(rightColor, leftColor, t);
     }
 
     outColor = float4(aaColor, 1.0f);
