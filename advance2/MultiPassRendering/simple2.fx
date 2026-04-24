@@ -55,10 +55,26 @@ void PixelShader1(in float4 inPosition    : POSITION,
     float rightLuma  = Luminance(rightColor);
 
     float verticalDiff = abs(upLuma - downLuma);
+    float horizontalDiff = abs(leftLuma - rightLuma);
     float edgeThreshold = g_EdgeThreshold;
+
+    static const int MODE_NONE = 0;
+    static const int MODE_BOTTOM_DARK = 1;
+    static const int MODE_TOP_DARK = 2;
+    static const int MODE_RIGHT_DARK = 3;
+    static const int MODE_LEFT_DARK = 4;
+
+    bool canBottomBeDark = false;
+    bool canTopBeDark = false;
+    bool canRightBeDark = false;
+    bool canLeftBeDark = false;
+
+    int selectedMode = MODE_NONE;
 
     bool isTopBrightBottomDark = false;
     bool isTopDarkBottomBright = false;
+    bool isLeftBrightRightDark = false;
+    bool isLeftDarkRightBright = false;
     bool isEdgeCandidate = false;
 
     if (verticalDiff > edgeThreshold)
@@ -70,8 +86,7 @@ void PixelShader1(in float4 inPosition    : POSITION,
                 centerLuma >= leftLuma &&
                 centerLuma >= rightLuma)
             {
-                isTopBrightBottomDark = true;
-                isEdgeCandidate = true;
+                canBottomBeDark = true;
             }
         }
         else if (downLuma > upLuma + edgeThreshold)
@@ -81,11 +96,69 @@ void PixelShader1(in float4 inPosition    : POSITION,
                 centerLuma <= leftLuma &&
                 centerLuma <= rightLuma)
             {
-                isTopDarkBottomBright = true;
-                isEdgeCandidate = true;
+                canTopBeDark = true;
             }
         }
     }
+
+    if (horizontalDiff > edgeThreshold)
+    {
+        if (leftLuma > rightLuma + edgeThreshold)
+        {
+            if (centerLuma >= upLuma &&
+                centerLuma >= downLuma &&
+                centerLuma >= leftLuma &&
+                centerLuma >= rightLuma)
+            {
+                canRightBeDark = true;
+            }
+        }
+        else if (rightLuma > leftLuma + edgeThreshold)
+        {
+            if (centerLuma <= upLuma &&
+                centerLuma <= downLuma &&
+                centerLuma <= leftLuma &&
+                centerLuma <= rightLuma)
+            {
+                canLeftBeDark = true;
+            }
+        }
+    }
+
+    if (canBottomBeDark || canTopBeDark || canRightBeDark || canLeftBeDark)
+    {
+        float bestScore = -1.0f;
+
+        if (canBottomBeDark && verticalDiff > bestScore)
+        {
+            selectedMode = MODE_BOTTOM_DARK;
+            bestScore = verticalDiff;
+        }
+
+        if (canTopBeDark && verticalDiff > bestScore)
+        {
+            selectedMode = MODE_TOP_DARK;
+            bestScore = verticalDiff;
+        }
+
+        if (canRightBeDark && horizontalDiff > bestScore)
+        {
+            selectedMode = MODE_RIGHT_DARK;
+            bestScore = horizontalDiff;
+        }
+
+        if (canLeftBeDark && horizontalDiff > bestScore)
+        {
+            selectedMode = MODE_LEFT_DARK;
+            bestScore = horizontalDiff;
+        }
+    }
+
+    isTopBrightBottomDark = (selectedMode == MODE_BOTTOM_DARK);
+    isTopDarkBottomBright = (selectedMode == MODE_TOP_DARK);
+    isLeftBrightRightDark = (selectedMode == MODE_RIGHT_DARK);
+    isLeftDarkRightBright = (selectedMode == MODE_LEFT_DARK);
+    isEdgeCandidate = isTopBrightBottomDark || isTopDarkBottomBright;
 
     if (!isEdgeCandidate)
     {
