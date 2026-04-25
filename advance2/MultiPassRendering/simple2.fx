@@ -15,6 +15,7 @@ sampler textureSampler = sampler_state
 
 float2 g_TexelSize;
 float g_EdgeThreshold = 0.02f;
+bool g_bUseAA = true;
 static const int SEARCH_RADIUS = 8;
 
 void VertexShader1(in  float4 inPosition  : POSITION,
@@ -43,6 +44,13 @@ void PixelShader1(in float4 inPosition    : POSITION,
     uv.y += g_TexelSize.y * 0.5f;
 
     float3 centerColor = tex2D(textureSampler, uv).rgb;
+
+    if (!g_bUseAA)
+    {
+        outColor = float4(centerColor, 1.0f);
+        return;
+    }
+
     float3 upColor     = tex2D(textureSampler, uv + float2(0.0f, -g_TexelSize.y)).rgb;
     float3 downColor   = tex2D(textureSampler, uv + float2(0.0f,  g_TexelSize.y)).rgb;
     float3 leftColor   = tex2D(textureSampler, uv + float2(-g_TexelSize.x, 0.0f)).rgb;

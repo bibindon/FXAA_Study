@@ -32,6 +32,7 @@ LPD3DXEFFECT g_pEffect1 = NULL;
 LPD3DXEFFECT g_pEffect2 = NULL;
 
 bool g_bClose = false;
+bool g_bUseAA = true;
 
 LPDIRECT3DTEXTURE9 g_pRenderTarget = NULL;
 
@@ -51,6 +52,7 @@ struct QuadVertex
 };
 
 static void TextDraw(LPD3DXFONT pFont, TCHAR* text, int X, int Y);
+static void TextDraw(LPD3DXFONT pFont, TCHAR* text, int X, int Y, D3DCOLOR color);
 static void InitD3D(HWND hWnd);
 static void Cleanup();
 
@@ -145,6 +147,11 @@ int WINAPI _tWinMain(_In_ HINSTANCE hInstance,
 
 void TextDraw(LPD3DXFONT pFont, TCHAR* text, int X, int Y)
 {
+    TextDraw(pFont, text, X, Y, D3DCOLOR_ARGB(255, 0, 0, 0));
+}
+
+void TextDraw(LPD3DXFONT pFont, TCHAR* text, int X, int Y, D3DCOLOR color)
+{
     RECT rect = { X, Y, 0, 0 };
 
     // DrawTextの戻り値は文字数である。
@@ -154,7 +161,7 @@ void TextDraw(LPD3DXFONT pFont, TCHAR* text, int X, int Y)
                                       -1,
                                       &rect,
                                       DT_LEFT | DT_NOCLIP,
-                                      D3DCOLOR_ARGB(255, 0, 0, 0));
+                                      color);
 
     assert((int)hResult >= 0);
 }
@@ -201,7 +208,7 @@ void InitD3D(HWND hWnd)
     }
 
     hResult = D3DXCreateFont(g_pd3dDevice,
-                             20,
+                             32,
                              0,
                              FW_HEAVY,
                              1,
@@ -488,10 +495,20 @@ void RenderPass2()
     hResult = g_pEffect2->SetFloatArray("g_TexelSize", texelSize, 2);
     assert(hResult == S_OK);
 
+    hResult = g_pEffect2->SetBool("g_bUseAA", g_bUseAA ? TRUE : FALSE);
+    assert(hResult == S_OK);
+
     hResult = g_pEffect2->CommitChanges();
     assert(hResult == S_OK);
 
     DrawFullscreenQuad();
+
+    TCHAR fxaaMsg[32];
+    _tcscpy_s(fxaaMsg, 32, g_bUseAA ? _T("FXAA : ON") : _T("FXAA : OFF"));
+    D3DCOLOR fxaaColor = g_bUseAA
+        ? D3DCOLOR_ARGB(255, 0, 180, 40)
+        : D3DCOLOR_ARGB(255, 220, 40, 40);
+    TextDraw(g_pFont, fxaaMsg, 8, SCREEN_H - 44, fxaaColor);
 
     hResult = g_pEffect2->EndPass();
     assert(hResult == S_OK);
@@ -608,6 +625,17 @@ LRESULT WINAPI MsgProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
     switch (msg)
     {
+    case WM_KEYDOWN:
+    {
+        if (wParam == '1')
+        {
+            g_bUseAA = !g_bUseAA;
+            return 0;
+        }
+
+        break;
+    }
+
     case WM_DESTROY:
     {
         PostQuitMessage(0);
